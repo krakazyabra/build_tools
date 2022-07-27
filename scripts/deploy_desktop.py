@@ -3,6 +3,7 @@
 import config
 import base
 import os
+import platform
 
 def make():
   base_dir = base.get_script_dir() + "/../out"
@@ -43,6 +44,7 @@ def make():
     # x2t
     base.create_dir(root_dir + "/converter")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "kernel")
+    base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "kernel_network")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "UnicodeConverter")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "graphics")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "PdfWriter")
@@ -53,6 +55,7 @@ def make():
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "HtmlRenderer")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "Fb2File")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "EpubFile")
+    base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "DocxRenderer")
 
     if ("ios" == platform):
       base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "x2t")
@@ -75,16 +78,12 @@ def make():
     # doctrenderer
     if isWindowsXP:
       base.copy_lib(core_build_dir + "/lib/" + platform_postfix + "/xp", root_dir + "/converter", "doctrenderer")
-      base.copy_files(core_dir + "/Common/3dParty/v8/v8_xp/" + platform + "/release/icudt*.dll", root_dir + "/converter/")
     else:
-      base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "doctrenderer")
-      if (0 == platform.find("win")):
-        base.copy_files(core_dir + "/Common/3dParty/v8/v8/out.gn/" + platform + "/release/icudt*.dat", root_dir + "/converter/")
-      else:
-        base.copy_file(core_dir + "/Common/3dParty/v8/v8/out.gn/" + platform + "/icudtl.dat", root_dir + "/converter/icudtl.dat")
+      base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir + "/converter", "doctrenderer")      
+    base.copy_v8_files(core_dir, root_dir + "/converter", platform, isWindowsXP)
 
     base.generate_doctrenderer_config(root_dir + "/converter/DoctRenderer.config", "../editors/", "desktop")
-    base.copy_dir(git_dir + "/desktop-apps/common/converter/empty", root_dir + "/converter/empty")
+    base.copy_dir(git_dir + "/document-templates/new", root_dir + "/converter/empty")
 
     # dictionaries
     base.create_dir(root_dir + "/dictionaries")
@@ -198,6 +197,10 @@ def make():
       base.delete_file(root_dir + "/cef_sandbox.lib")
       base.delete_file(root_dir + "/libcef.lib")
 
+    isMacArmPlaformOnIntel = False
+    if (platform == "mac_arm64") and not base.is_os_arm():
+      isMacArmPlaformOnIntel = True
+
     # all themes generate ----
     base.copy_exe(core_build_dir + "/bin/" + platform_postfix, root_dir + "/converter", "allfontsgen")
     base.copy_exe(core_build_dir + "/bin/" + platform_postfix, root_dir + "/converter", "allthemesgen")
@@ -205,16 +208,24 @@ def make():
     if (0 == platform.find("mac")):
       base.mac_correct_rpath_desktop(root_dir)
 
-    themes_params = []
-    if ("" != config.option("themesparams")):
-      themes_params = ["--params=\"" + config.option("themesparams") + "\""]
-    base.cmd_exe(root_dir + "/converter/allfontsgen", ["--use-system=\"1\"", "--input=\"" + root_dir + "/fonts\"", "--input=\"" + git_dir + "/core-fonts\"", "--allfonts=\"" + root_dir + "/converter/AllFonts.js\"", "--selection=\"" + root_dir + "/converter/font_selection.bin\""])
-    base.cmd_exe(root_dir + "/converter/allthemesgen", ["--converter-dir=\"" + root_dir + "/converter\"", "--src=\"" + root_dir + "/editors/sdkjs/slide/themes\"", "--allfonts=\"AllFonts.js\"", "--output=\"" + root_dir + "/editors/sdkjs/common/Images\""] + themes_params)
+    if isMacArmPlaformOnIntel:
+      sdkjs_dir = root_dir + "/editors/sdkjs"
+      end_find_platform = sdkjs_dir.rfind("/mac_arm64/")
+      sdkjs_dir_mac64 = sdkjs_dir[0:end_find_platform] + "/mac_64/" + sdkjs_dir[end_find_platform+11:]
+      base.delete_dir(sdkjs_dir)
+      base.copy_dir(sdkjs_dir_mac64, sdkjs_dir)
+    else:
+      themes_params = []
+      if ("" != config.option("themesparams")):
+        themes_params = ["--params=\"" + config.option("themesparams") + "\""]
+      base.cmd_exe(root_dir + "/converter/allfontsgen", ["--use-system=\"1\"", "--input=\"" + root_dir + "/fonts\"", "--input=\"" + git_dir + "/core-fonts\"", "--allfonts=\"" + root_dir + "/converter/AllFonts.js\"", "--selection=\"" + root_dir + "/converter/font_selection.bin\""])
+      base.cmd_exe(root_dir + "/converter/allthemesgen", ["--converter-dir=\"" + root_dir + "/converter\"", "--src=\"" + root_dir + "/editors/sdkjs/slide/themes\"", "--allfonts=\"AllFonts.js\"", "--output=\"" + root_dir + "/editors/sdkjs/common/Images\""] + themes_params)
+      base.delete_file(root_dir + "/converter/AllFonts.js")
+      base.delete_file(root_dir + "/converter/font_selection.bin")
+      base.delete_file(root_dir + "/converter/fonts.log")
 
     base.delete_exe(root_dir + "/converter/allfontsgen")
     base.delete_exe(root_dir + "/converter/allthemesgen")
-    base.delete_file(root_dir + "/converter/AllFonts.js")
-    base.delete_file(root_dir + "/converter/font_selection.bin")
 
     if not isUseJSC:
       base.delete_file(root_dir + "/editors/sdkjs/slide/sdk-all.cache")

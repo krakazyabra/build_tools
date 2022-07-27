@@ -5,6 +5,7 @@ sys.path.append('../../scripts')
 import base
 import os
 import subprocess
+import deps
 
 def get_branch_name(directory):
   cur_dir = os.getcwd()
@@ -16,62 +17,10 @@ def get_branch_name(directory):
   os.chdir(cur_dir)
   return current_branch
 
-def install_deps():
-  # dependencies
-  packages = ["apt-transport-https", 
-              "autoconf2.13",
-              "build-essential",
-              "ca-certificates",
-              "cmake",
-              "curl",
-              "git",
-              "glib-2.0-dev",
-              "libglu1-mesa-dev",
-              "libgtk-3-dev",
-              "libpulse-dev",
-              "libtool",
-              "p7zip-full",
-              "subversion",
-              "gzip",
-              "libasound2-dev",
-              "libatspi2.0-dev",
-              "libcups2-dev",
-              "libdbus-1-dev",
-              "libicu-dev",
-              "libglu1-mesa-dev",
-              "libgstreamer1.0-dev",
-              "libgstreamer-plugins-base1.0-dev",
-              "libx11-xcb-dev",
-              "libxcb*",
-              "libxi-dev",
-              "libxrender-dev",
-              "libxss1",
-              "libncurses5"]
-
-  base.cmd("sudo", ["apt-get", "install", "-y"] + packages)
-
-  # nodejs
-  if not base.is_file("./node_js_setup_10.x"):
-    base.download("https://deb.nodesource.com/setup_10.x", "./node_js_setup_10.x")
-    base.cmd("sudo", ["bash", "./node_js_setup_10.x"])
-    base.cmd("sudo", ["apt-get", "install", "-y", "nodejs"])
-    base.cmd("sudo", ["npm", "install", "-g", "npm@6"])
-    base.cmd("sudo", ["npm", "install", "-g", "grunt-cli"])
-    base.cmd("sudo", ["npm", "install", "-g", "pkg"])
-
-  # java
-  base.cmd("sudo", ["apt-get", "-y", "install", "software-properties-common"])
-  base.cmd("sudo", ["add-apt-repository", "-y", "ppa:openjdk-r/ppa"])
-  base.cmd("sudo", ["apt-get", "update"])
-  base.cmd("sudo", ["apt-get", "-y", "install", "openjdk-8-jdk"])
-  base.cmd("sudo", ["update-alternatives", "--config", "java"])
-  base.cmd("sudo", ["update-alternatives", "--config", "javac"])
-  return
-
 def install_qt():
   # qt
   if not base.is_file("./qt_source_5.9.9.tar.xz"):
-    base.download("http://download.qt.io/official_releases/qt/5.9/5.9.9/single/qt-everywhere-opensource-src-5.9.9.tar.xz", "./qt_source_5.9.9.tar.xz")
+    base.download("https://download.qt.io/archive/qt/5.9/5.9.9/single/qt-everywhere-opensource-src-5.9.9.tar.xz", "./qt_source_5.9.9.tar.xz")
 
   if not base.is_dir("./qt-everywhere-opensource-src-5.9.9"):
     base.cmd("tar", ["-xf", "./qt_source_5.9.9.tar.xz"])
@@ -109,7 +58,7 @@ def install_qt():
 
 if not base.is_file("./node_js_setup_10.x"):
   print("install dependencies...")
-  install_deps()  
+  deps.install_deps()  
 
 if not base.is_dir("./qt_build"):  
   print("install qt...")
@@ -119,6 +68,7 @@ branch = get_branch_name("../..")
 
 array_args = sys.argv[1:]
 array_modules = []
+params = []
 
 config = {}
 for arg in array_args:
@@ -126,6 +76,8 @@ for arg in array_args:
     indexEq = arg.find("=")
     if (-1 != indexEq):
       config[arg[2:indexEq]] = arg[indexEq + 1:]
+      params.append(arg[:indexEq])
+      params.append(arg[indexEq + 1:])
   else:
     array_modules.append(arg)
 
@@ -147,7 +99,7 @@ print("---------------------------------------------")
 build_tools_params = ["--branch", branch, 
                       "--module", modules, 
                       "--update", "1",
-                      "--qt-dir", os.getcwd() + "/qt_build/Qt-5.9.9"]
+                      "--qt-dir", os.getcwd() + "/qt_build/Qt-5.9.9"] + params
 
 base.cmd_in_dir("../..", "./configure.py", build_tools_params)
 base.cmd_in_dir("../..", "./make.py")

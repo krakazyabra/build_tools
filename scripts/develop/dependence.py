@@ -75,18 +75,22 @@ def check_dependencies():
   checksResult = CDependencies()
 
   checksResult.append(check_git())
-  checksResult.append(check_nodejs())
   if (host_platform == 'linux'):
-    checksResult.append(check_npm())
     checksResult.append(check_curl())
+    checksResult.append(check_nodejs())
+    checksResult.append(check_npm())
     checksResult.append(check_7z())
+
   checksResult.append(check_java())
   checksResult.append(check_erlang())
   checksResult.append(check_rabbitmq())
   checksResult.append(check_gruntcli())
+
   if (host_platform == 'windows'):
+    checksResult.append(check_nodejs())
     checksResult.append(check_buildTools())
-  if (config.option("sql-type") == 'mysql'):
+
+  if (config.option("sql-type") == 'mysql' and host_platform == 'windows'):
     checksResult.append(check_mysqlServer())
   else:
     checksResult.append(check_postgreSQL())
@@ -102,15 +106,15 @@ def check_dependencies():
     install_args += checksResult.get_uninstall()
     install_args += checksResult.get_removepath()
     install_args += checksResult.get_install()
+    install_args[0] = './scripts/develop/' + install_args[0]
     if (host_platform == 'windows'):
-      install_args[0] = './scripts/develop/' + install_args[0]
       code = libwindows.sudo(unicode(sys.executable), install_args)
     elif (host_platform == 'linux'):
-      base.cmd_in_dir('./scripts/develop/', 'python', install_args)
       get_updates()
-  
+      base.cmd('python', install_args, False)
+
   check_npmPath()
-  if (config.option("sql-type") == 'mysql'):
+  if (config.option("sql-type") == 'mysql' and host_platform == 'windows'):
     return check_MySQLConfig(checksResult.sqlPath)
   return check_postgreConfig(checksResult.sqlPath)
 
@@ -151,24 +155,52 @@ def check_git():
 def check_nodejs():
   dependence = CDependencies()
 
+  isNeedReinstall = False
   base.print_info('Check installed Node.js')
   nodejs_version = base.run_command('node -v')['stdout']
   if (nodejs_version == ''):
     print('Node.js not found')
-    dependence.append_install('Node.js')
+    if (host_platform == 'windows'):
+      dependence.append_install('Node.js')
+    elif (host_platform == 'linux'):
+      dependence.append_install('NodeJs')
     return dependence
 
-  nodejs_cur_version = int(nodejs_version.split('.')[0][1:])
-  print('Installed Node.js version: ' + str(nodejs_cur_version))
-  nodejs_min_version = 8
-  nodejs_max_version = 14
-  if (nodejs_min_version > nodejs_cur_version or nodejs_cur_version > nodejs_max_version):
-    print('Installed Node.js version must be 8.x to 14.x')
+  nodejs_cur_version_major = int(nodejs_version.split('.')[0][1:])
+  nodejs_cur_version_minor = int(nodejs_version.split('.')[1])
+  print('Installed Node.js version: ' + nodejs_version[1:])
+  nodejs_min_version = '10.20'
+  nodejs_min_version_minor  = 0
+  major_minor_min_version = nodejs_min_version.split('.')
+  nodejs_min_version_major = int(major_minor_min_version[0])
+  if len(major_minor_min_version) > 1:
+    nodejs_min_version_minor = int(major_minor_min_version[1])
+  nodejs_max_version = '14'
+  nodejs_max_version_minor = float("inf")
+  major_minor_max_version = nodejs_max_version.split('.')
+  nodejs_max_version_major = int(major_minor_max_version[0])
+  if len(major_minor_max_version) > 1:
+    nodejs_max_version_minor = int(major_minor_max_version[1])
+
+  if (nodejs_min_version_major > nodejs_cur_version_major or nodejs_cur_version_major > nodejs_max_version_major):
+    print('Installed Node.js version must be 10.20 to 14.x')
+    isNeedReinstall = True
+  elif (nodejs_min_version_major == nodejs_cur_version_major):
+    if (nodejs_min_version_minor > nodejs_cur_version_minor):
+      isNeedReinstall = True
+  elif (nodejs_cur_version_major == nodejs_max_version_major):
+    if (nodejs_cur_version_minor > nodejs_max_version_minor):
+      isNeedReinstall = True
+
+  if (True == isNeedReinstall):
+    print('Installed Node.js version must be 10.20 to 14.x')
     if (host_platform == 'windows'):
       dependence.append_uninstall('Node.js')
+      dependence.append_install('Node.js')
     elif (host_platform == 'linux'):
       dependence.append_uninstall('nodejs')
-    dependence.append_install('Node.js')
+      dependence.append_install('NodeJs')
+
     return dependence
 
   print('Installed Node.js is valid')
@@ -195,16 +227,24 @@ def check_java():
 def get_erlang_path_to_bin():
   erlangPath = ''
   if (host_platform == 'windows'):
-    erlangPath = os.getenv("ERLANG_HOME")
-    if (erlangPath is not None):
-      erlangPath += '\\bin'
+    erlangPath = os.getenv("ERLANG_HOME", "")
+    if (erlangPath != ""):
+      erlangPath += "\\bin"
   return erlangPath
 def check_erlang():
   dependence = CDependencies()
   base.print_info('Check installed Erlang')
 
-  erlangBitness = base.run_command_in_dir(get_erlang_path_to_bin(), 'erl -eval "erlang:display(erlang:system_info(wordsize)), halt()." -noshell')['stdout']
-
+  erlangBitness = ""
+  erlang_path_home = get_erlang_path_to_bin()
+  if base.is_exist(erlang_path_home) == False and host_platform == 'windows':
+    dependence.append_uninstall('Erlang')
+    dependence.append_uninstall('RabbitMQ')
+    return dependence
+  
+  if ("" != erlang_path_home or host_platform != 'windows'):
+    erlangBitness = base.run_command_in_dir(erlang_path_home, 'erl -eval "erlang:display(erlang:system_info(wordsize)), halt()." -noshell')['stdout']
+  
   if (erlangBitness == '8'):
     print("Installed Erlang is valid")
     return dependence
@@ -332,8 +372,8 @@ def check_npm():
 def check_vc_components():
   base.print_info('Check Visual C++ components')
   result = True
-  if (len(get_programUninstalls('Microsoft Visual C++ 2015-2019 Redistributable (x64)')) == 0):
-    print('Microsoft Visual C++ 2015-2019 Redistributable (x64) not found')
+  if (len(get_programUninstalls('Microsoft Visual C++ 2015-')) == 0):
+    print('Microsoft Visual C++ 2015-20** Redistributable (x64) not found')
     result = installProgram('VC2019x64') and result
 
   print('Installed Visual C++ components is valid')
@@ -383,6 +423,31 @@ def check_7z():
     dependence.append_install('7z')
 
   return dependence
+
+def check_gh():
+  base.print_info('Check installed GitHub CLI')
+
+  result = base.run_command('gh --version')['stdout']
+
+  if (result == ''):
+    base.print_info('GitHub CLI not found')
+	# ToDo install
+    return False
+
+  base.print_info('GitHub CLI is installed')
+  return True
+
+def check_gh_auth():
+  base.print_info('Check auth for GitHub CLI')
+
+  result = base.run_command('gh auth status')['stderr']
+
+  if (result.find('not logged') != -1):
+    base.print_info('GitHub CLI not logged in to github')
+    return False
+
+  base.print_info('GitHub CLI logged in to github')
+  return True
 
 def get_mysql_path_to_bin(mysqlPath = ''):
   if (host_platform == 'windows'):
@@ -450,9 +515,14 @@ def check_mysqlServer():
 
   print('Valid MySQL Server not found')
   dependence.append_uninstall('MySQL Server')
+  dependence.append_uninstall('MySQL Installer')
+  dependence.append_install('MySQLInstaller')
   dependence.append_install('MySQLServer')
 
   MySQLData = os.environ['ProgramData'] + '\\MySQL\\'
+  if base.is_exist(MySQLData) == False:
+    return dependence
+
   dir = os.listdir(MySQLData)
   for path in dir:
     if (path.find('MySQL Server') != -1) and (base.is_file(MySQLData + path) == False):
@@ -467,27 +537,26 @@ def check_MySQLConfig(mysqlPath = ''):
   if (base.run_command_in_dir(mysql_path_to_bin, mysqlLoginSrt + ' -e "SHOW DATABASES;"')['stdout'].find('onlyoffice') == -1):
     print('Database onlyoffice not found')
     creatdb_path = base.get_script_dir() + "/../../server/schema/mysql/createdb.sql"
-    result = execMySQLScript(mysqlPath, creatdb_path)
+    result = execMySQLScript(mysql_path_to_bin, creatdb_path)
   if (base.run_command_in_dir(mysql_path_to_bin, mysqlLoginSrt + ' -e "SELECT plugin from mysql.user where User=' + "'" + install_params['MySQLServer']['user'] + "';" + '"')['stdout'].find('mysql_native_password') == -1):
     print('Password encryption is not valid')
-    result = set_MySQLEncrypt(mysqlPath, 'mysql_native_password') and result
+    result = set_MySQLEncrypt(mysql_path_to_bin, 'mysql_native_password') and result
 
   return result
-def execMySQLScript(mysqlPath, scriptPath):
-  #ToDo check path to mysql
+def execMySQLScript(mysql_path_to_bin, scriptPath):
   print('Execution ' + scriptPath)
-
-  code = subprocess.call(get_mysqlLoginSrting() + ' < "' + scriptPath + '"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+  mysqlLoginSrt = get_mysqlLoginSrting()
+  
+  code = base.exec_command_in_dir(mysql_path_to_bin, get_mysqlLoginSrting() + ' < "' + scriptPath + '"')
   if (code != 0):
     print('Execution failed!')
     return False
   print('Execution completed')
   return True
-def set_MySQLEncrypt(mysqlPath, sEncrypt):
-  #ToDo check path to mysql
+def set_MySQLEncrypt(mysql_path_to_bin, sEncrypt):
   print('Setting MySQL password encrypting...')
 
-  code = subprocess.call(get_mysqlLoginSrting() + ' -e "' + "ALTER USER '" + install_params['MySQLServer']['user'] + "'@'localhost' IDENTIFIED WITH " + sEncrypt + " BY '" + install_params['MySQLServer']['pass'] + "';" + '"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+  code = base.exec_command_in_dir(mysql_path_to_bin, get_mysqlLoginSrting() + ' -e "' + "ALTER USER '" + install_params['MySQLServer']['user'] + "'@'localhost' IDENTIFIED WITH " + sEncrypt + " BY '" + install_params['MySQLServer']['pass'] + "';" + '"')
   if (code != 0):
     print('Setting password encryption failed!')
     return False
@@ -508,8 +577,8 @@ def uninstall_mysqlserver():
 def get_postrgre_path_to_bin(postgrePath = ''):
   if (host_platform == 'windows'):
     if (postgrePath == ''):
-      postgrePath = os.environ['PROGRAMW6432'] + '\\PostgreSQL\\13\\'
-    postgrePath += 'bin'
+      postgrePath = os.environ['PROGRAMW6432'] + '\\PostgreSQL\\13'
+    postgrePath += '\\bin'
   return postgrePath
 def get_postgreLoginSrting(userName):
   if (host_platform == 'windows'):
@@ -548,8 +617,9 @@ def check_postgreSQL():
 
   if (host_platform == 'linux'):
     result = os.system(postgreLoginSrt + ' -c "\q"')
+    connectionResult = base.run_command(connectionString)['stdout']
 
-    if (result != 0):
+    if (result != 0 or connectionResult.find(install_params['PostgreSQL']['dbPort']) == -1):
       print('Valid PostgreSQL not found!')
       dependence.append_install('PostgreSQL')
       dependence.append_uninstall('PostgreSQL')
@@ -563,7 +633,7 @@ def check_postgreSQL():
   for info in arrInfo:
     if (base.is_dir(info['Location']) == False):
       continue
-
+    
     postgre_full_name = 'PostgreSQL ' + info['Version'][:2] + ' '
     connectionResult = base.run_command_in_dir(get_postrgre_path_to_bin(info['Location']), connectionString)['stdout']
 
@@ -601,60 +671,55 @@ def check_postgreConfig(postgrePath = ''):
     if (os.system(postgreLoginDbUser + '-c "\q"') != 0):
       print('Invalid user password!')
       base.print_info('Changing password...')
-      result = change_userPass(dbUser, dbPass, postgrePath) and result
+      result = change_userPass(dbUser, dbPass, postgre_path_to_bin) and result
   else:
     print('User ' + dbUser + ' not exist!')
     base.print_info('Creating ' + dbName + ' user...')
-    result = create_postgreUser(dbUser, dbPass, postgrePath) and result
+    result = create_postgreUser(dbUser, dbPass, postgre_path_to_bin) and result
 
   if (base.run_command_in_dir(postgre_path_to_bin, postgreLoginRoot + ' -c "SELECT datname FROM pg_database;"')['stdout'].find('onlyoffice') == -1):
     print('Database ' + dbName + ' not found')
     base.print_info('Creating ' + dbName + ' database...')
-    result = create_postgreDb(dbName, postgrePath) and configureDb(dbUser, dbName, creatdb_path, postgrePath)
+    result = create_postgreDb(dbName, postgre_path_to_bin) and configureDb(dbUser, dbName, creatdb_path, postgre_path_to_bin)
   else:
     if (base.run_command_in_dir(postgre_path_to_bin, postgreLoginRoot + '-c "SELECT pg_size_pretty(pg_database_size(' + "'" + dbName + "'" + '));"')['stdout'].find('7559 kB') != -1):
       print('Database ' + dbName + ' not configured')
       base.print_info('Configuring ' + dbName + ' database...')
-      result = configureDb(dbName, creatdb_path, postgrePath) and result
+      result = configureDb(dbName, creatdb_path, postgre_path_to_bin) and result
     print('Database ' + dbName + ' is valid')
 
   if (base.run_command_in_dir(postgre_path_to_bin, postgreLoginRoot + '-c "\l+ ' + dbName + '"')['stdout'].find(dbUser +'=CTc/' + rootUser) == -1):
     print('User ' + dbUser + ' has no database privileges!')
     base.print_info('Setting database privileges for user ' + dbUser + '...')
-    result = set_dbPrivilegesForUser(dbUser, dbName, postgrePath) and result
+    result = set_dbPrivilegesForUser(dbUser, dbName, postgre_path_to_bin) and result
   print('User ' + dbUser + ' has database privileges')
 
   return result
-def create_postgreDb(dbName, postgrePath = ''):
-  #ToDo check path to postgre
+def create_postgreDb(dbName, postgre_path_to_bin = ''):
   postgreLoginUser = get_postgreLoginSrting(install_params['PostgreSQL']['root'])
-  if (os.system(postgreLoginUser + '-c "CREATE DATABASE ' + dbName +';"') != 0):
+  if (base.exec_command_in_dir(postgre_path_to_bin, postgreLoginUser + '-c "CREATE DATABASE ' + dbName +';"') != 0):
     return False
   return True
-def set_dbPrivilegesForUser(userName, dbName, postgrePath = ''):
-  #ToDo check path to postgre
+def set_dbPrivilegesForUser(userName, dbName, postgre_path_to_bin = ''):
   postgreLoginUser = get_postgreLoginSrting(install_params['PostgreSQL']['root'])
-  if (os.system(postgreLoginUser + '-c "GRANT ALL privileges ON DATABASE ' + dbName + ' TO ' + userName + ';"') != 0):
+  if (base.exec_command_in_dir(postgre_path_to_bin, postgreLoginUser + '-c "GRANT ALL privileges ON DATABASE ' + dbName + ' TO ' + userName + ';"') != 0):
     return False
   return True
-def create_postgreUser(userName, userPass, postgrePath = ''):
-  #ToDo check path to postgre
+def create_postgreUser(userName, userPass, postgre_path_to_bin = ''):
   postgreLoginRoot = get_postgreLoginSrting(install_params['PostgreSQL']['root'])
-  if (os.system(postgreLoginRoot + '-c "CREATE USER ' + userName + ' WITH password ' + "'" + userPass + "'" + ';"') != 0):
+  if (base.exec_command_in_dir(postgre_path_to_bin, postgreLoginRoot + '-c "CREATE USER ' + userName + ' WITH password ' + "'" + userPass + "'" + ';"') != 0):
     return False
   return True
-def change_userPass(userName, userPass, postgrePath = ''):
-  #ToDo check path to postgre
+def change_userPass(userName, userPass, postgre_path_to_bin = ''):
   postgreLoginRoot = get_postgreLoginSrting(install_params['PostgreSQL']['root'])
-  if (os.system(postgreLoginRoot + '-c "ALTER USER ' + userName + " WITH PASSWORD '" +  userPass + "';" + '"') != 0):
+  if (base.exec_command_in_dir(postgre_path_to_bin, postgreLoginRoot + '-c "ALTER USER ' + userName + " WITH PASSWORD '" +  userPass + "';" + '"') != 0):
     return False
   return True
-def configureDb(userName, dbName, scriptPath, postgrePath = ''):
-  #ToDo check path to postgre
+def configureDb(userName, dbName, scriptPath, postgre_path_to_bin = ''):
   print('Execution ' + scriptPath)
   postgreLoginSrt = get_postgreLoginSrting(userName)
 
-  code = os.system(postgreLoginSrt + ' -d ' + dbName + ' -f "' + scriptPath + '"')
+  code = base.exec_command_in_dir(postgre_path_to_bin, postgreLoginSrt + ' -d ' + dbName + ' -f "' + scriptPath + '"')
   if (code != 0):
     print('Execution failed!')
     return False
@@ -667,6 +732,7 @@ def uninstall_postgresql():
   code = os.system('sudo rm -rf /etc/postgresql/') and code
   code = os.system('sudo userdel -r postgres') and code
   code = os.system('sudo groupdel postgres') and code
+  os.system('sudo kill ' + base.run_command('sudo fuser -vn tcp 5432')['stdout'])
 
   return  code
 
@@ -724,12 +790,11 @@ def uninstallProgram(sName):
   if (code != 0):
     print("Uninstalling was failed!")
     return False
-  
+
   return True
 
 def installProgram(sName):
   base.print_info("Installing " + sName + "...")
-
   if (host_platform == 'windows'):
     if (sName in install_special):
       code = install_special[sName]()
@@ -833,6 +898,13 @@ def install_postgresql():
 
   return code
 
+def install_nodejs():
+  os.system('curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -')
+  base.print_info("Install node.js...")
+  install_command = 'yes | sudo apt install nodejs'
+  print(install_command)
+  return os.system(install_command)
+
 downloads_list = {
   'Windows': {
     'Git': 'https://github.com/git-for-windows/git/releases/download/v2.29.0.windows.1/Git-2.29.0-64-bit.exe',
@@ -840,7 +912,7 @@ downloads_list = {
     'Java': 'https://javadl.oracle.com/webapps/download/AutoDL?BundleId=242990_a4634525489241b9a9e1aa73d9e118e6',
     'RabbitMQ': 'https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.8.9/rabbitmq-server-3.8.9.exe',
     'Erlang': 'http://erlang.org/download/otp_win64_23.1.exe',
-    'VC2019x64': 'https://aka.ms/vs/16/release/vc_redist.x64.exe',
+    'VC2019x64': 'https://aka.ms/vs/17/release/vc_redist.x64.exe',
     'MySQLInstaller': 'https://dev.mysql.com/get/Downloads/MySQLInstaller/mysql-installer-web-community-8.0.21.0.msi',
     'BuildTools': 'https://download.visualstudio.microsoft.com/download/pr/11503713/e64d79b40219aea618ce2fe10ebd5f0d/vs_BuildTools.exe',
     'Redis': 'https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.msi',
@@ -848,7 +920,6 @@ downloads_list = {
   },
   'Linux': {
     'Git': 'git',
-    'Node.js': 'nodejs',
     'Npm': 'npm',
     'Java': 'openjdk-11-jdk',
     'RabbitMQ': 'rabbitmq-server',
@@ -860,6 +931,7 @@ downloads_list = {
   }
 }
 install_special = {
+  'NodeJs': install_nodejs,
   'GruntCli': install_gruntcli,
   'MySQLServer': install_mysqlserver,
   'RedisServer' : install_redis,
@@ -891,3 +963,4 @@ install_params = {
 uninstall_params = {
   'PostgreSQL': '--mode unattended --unattendedmodeui none'
 }
+

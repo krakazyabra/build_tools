@@ -32,7 +32,8 @@ def make():
       continue
 
     root_dir = base_dir + ("/" + native_platform + "/" + branding + "/documentserver")
-    root_dir_snap = root_dir + '-snap'
+    root_dir_snap = root_dir + '-snap/var/www/onlyoffice/documentserver'
+    root_dir_snap_example = root_dir_snap + '-example'
     if (base.is_dir(root_dir)):
       base.delete_dir(root_dir)
     base.create_dir(root_dir)
@@ -57,11 +58,6 @@ def make():
     base.create_dir(build_server_dir + '/Metrics/node_modules/modern-syslog/build/Release')
     base.copy_file(bin_server_dir + "/Metrics/node_modules/modern-syslog/build/Release/core.node", build_server_dir + "/Metrics/node_modules/modern-syslog/build/Release/core.node")
 
-    base.create_dir(build_server_dir + '/SpellChecker')
-    base.copy_exe(bin_server_dir + "/SpellChecker", build_server_dir + '/SpellChecker', "spellchecker")
-    base.create_dir(build_server_dir + '/SpellChecker/node_modules/nodehun/build/Release')
-    base.copy_file(bin_server_dir + "/SpellChecker/node_modules/nodehun/build/Release/Nodehun.node", build_server_dir + '/SpellChecker/node_modules/nodehun/build/Release/Nodehun.node')
-    
 
     qt_dir = base.qt_setup(native_platform)
     platform = native_platform
@@ -76,6 +72,7 @@ def make():
     base.create_dir(converter_dir)
 
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "kernel")
+    base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "kernel_network")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "UnicodeConverter")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "graphics")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "PdfWriter")
@@ -87,6 +84,7 @@ def make():
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "doctrenderer")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "Fb2File")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "EpubFile")
+    base.copy_lib(core_build_dir + "/lib/" + platform_postfix, converter_dir, "DocxRenderer")
     base.copy_exe(core_build_dir + "/bin/" + platform_postfix, converter_dir, "x2t")
 
     base.generate_doctrenderer_config(converter_dir + "/DoctRenderer.config", "../../../", "server")
@@ -103,11 +101,8 @@ def make():
     if (0 == platform.find("mac")):
       base.copy_file(core_dir + "/Common/3dParty/icu/" + platform + "/build/libicudata.58.dylib", converter_dir + "/libicudata.58.dylib")
       base.copy_file(core_dir + "/Common/3dParty/icu/" + platform + "/build/libicuuc.58.dylib", converter_dir + "/libicuuc.58.dylib")
-
-    if (0 == platform.find("win")):
-      base.copy_files(core_dir + "/Common/3dParty/v8/v8/out.gn/" + platform + "/release/icudt*.dat", converter_dir + "/")
-    else:
-      base.copy_file(core_dir + "/Common/3dParty/v8/v8/out.gn/" + platform + "/icudtl.dat", converter_dir + "/icudtl.dat")
+    
+    base.copy_v8_files(core_dir, converter_dir, platform)
 
     # builder
     base.copy_exe(core_build_dir + "/bin/" + platform_postfix, converter_dir, "docbuilder")
@@ -139,7 +134,7 @@ def make():
       branding_dir = git_dir + '/' + config.option("branding") + '/server'
 
     #dictionaries
-    spellchecker_dictionaries = build_server_dir + '/SpellChecker/dictionaries'
+    spellchecker_dictionaries = root_dir + '/dictionaries'
     spellchecker_dictionaries_files = server_dir + '/../dictionaries/*_*'
     base.create_dir(spellchecker_dictionaries)
     base.copy_files(spellchecker_dictionaries_files, spellchecker_dictionaries)
@@ -160,6 +155,12 @@ def make():
     core_fonts = build_server_dir + '/../core-fonts'
     base.create_dir(core_fonts)
     base.copy_dir_content(core_fonts_files, core_fonts, "", ".git")
+
+    #document-templates
+    document_templates_files = server_dir + '/../document-templates'
+    document_templates = build_server_dir + '/../document-templates'
+    base.create_dir(document_templates)
+    base.copy_dir_content(document_templates_files, document_templates, "", ".git")
 
     #license
     license_file1 = server_dir + '/LICENSE.txt'
@@ -191,6 +192,8 @@ def make():
 
     # snap
     if (0 == platform.find("linux")):
+      if (base.is_dir(root_dir_snap)):
+        base.delete_dir(root_dir_snap)
       base.create_dir(root_dir_snap)
       base.copy_dir(root_dir, root_dir_snap)
       base.copy_dir(bin_server_dir + '/DocService/node_modules', root_dir_snap + '/server/DocService/node_modules')
@@ -200,12 +203,12 @@ def make():
       base.copy_dir(bin_server_dir + '/FileConverter/node_modules', root_dir_snap + '/server/FileConverter/node_modules')
       base.copy_dir(bin_server_dir + '/FileConverter/sources', root_dir_snap + '/server/FileConverter/sources')
       base.delete_file(root_dir_snap + '/server/FileConverter/converter')
-      base.copy_dir(bin_server_dir + '/SpellChecker/node_modules', root_dir_snap + '/server/SpellChecker/node_modules')
-      base.copy_dir(bin_server_dir + '/SpellChecker/sources', root_dir_snap + '/server/SpellChecker/sources')
-      base.delete_file(root_dir_snap + '/server/SpellChecker/spellchecker')
       base.copy_dir(bin_server_dir + '/Common/node_modules', root_dir_snap + '/server/Common/node_modules')
       base.copy_dir(bin_server_dir + '/Common/sources', root_dir_snap + '/server/Common/sources')
-      base.copy_dir(bin_example_dir + '/..', root_dir_snap + '/example')
+      if (base.is_dir(root_dir_snap_example)):
+        base.delete_dir(root_dir_snap_example)
+      base.create_dir(root_dir_snap_example)
+      base.copy_dir(bin_example_dir + '/..', root_dir_snap_example)
       base.delete_file(root_dir_snap + '/example/nodejs/example')
 
   return

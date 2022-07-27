@@ -9,7 +9,7 @@ import traceback
 
 def install_module(path):
   base.print_info('Install: ' + path)
-  base.cmd_in_dir(path, 'npm', ['install'])
+  base.cmd_in_dir(path, 'npm', ['ci'])
 
 def run_module(directory, args=[]):
   base.run_nodejs_in_dir(directory, args)
@@ -31,12 +31,21 @@ def start_mac_services():
   base.run_process(['mysql.server', 'restart'])
   base.print_info('Start RabbitMQ Server')
   base.run_process(['rabbitmq-server'])
-  base.print_info('Start Redis')
-  base.run_process(['redis-server'])
+#  base.print_info('Start Redis')
+#  base.run_process(['redis-server'])
 
+def start_linux_services():
+  base.print_info('Restart MySQL Server')
+  os.system('sudo service mysql restart')
+  base.print_info('Restart RabbitMQ Server')
+  os.system('sudo service rabbitmq-server restart')
+  
 def run_integration_example():
   base.cmd_in_dir('../../../document-server-integration/web/documentserver-example/nodejs', 'python', ['run-develop.py'])
 
+def start_linux_services():
+  base.print_info('Restart MySQL Server')
+  
 def make(args = []):
   try:
     base.configure_common_apps()
@@ -48,11 +57,18 @@ def make(args = []):
       restart_win_rabbit()
     elif ("mac" == platform):
       start_mac_services()
+    elif ("linux" == platform):
+      start_linux_services()
+      
 
     branch = base.run_command('git rev-parse --abbrev-ref HEAD')['stdout']
     
     base.print_info('Build modules')
-    base.cmd_in_dir('../../', 'python', ['configure.py', '--branch', branch or 'develop', '--develop', '1', '--module', 'server', '--update', '1', '--update-light', '1', '--clean', '0'] + args)
+    if ("linux" == platform):
+    	base.cmd_in_dir('../../', 'python', ['configure.py', '--branch', branch or 'develop', '--develop', '1', '--module', 'server', '--update', '1', '--update-light', '1', '--clean', '0'] + args)
+    else:
+    	base.cmd_in_dir('../../', 'python', ['configure.py', '--branch', branch or 'develop', '--develop', '1', '--module', 'server', '--update', '1', '--update-light', '1', '--clean', '0', '--sql-type', 'mysql', '--db-port', '3306', '--db-user', 'root', '--db-pass', 'onlyoffice'] + args)
+    	
     base.cmd_in_dir('../../', 'python', ['make.py'])
   
     run_integration_example()
@@ -62,20 +78,19 @@ def make(args = []):
     install_module('../../../server/DocService')
     install_module('../../../server/Common')
     install_module('../../../server/FileConverter')
-    install_module('../../../server/SpellChecker')
 
     base.set_env('NODE_ENV', 'development-' + platform)
-    base.set_env('NODE_CONFIG_DIR', '../../Common/config')
+    base.set_env('NODE_CONFIG_DIR', '../Common/config')
 
     if ("mac" == platform):
-      base.set_env('DYLD_LIBRARY_PATH', '../../FileConverter/bin/')
+      base.set_env('DYLD_LIBRARY_PATH', '../FileConverter/bin/')
     elif ("linux" == platform):
-      base.set_env('LD_LIBRARY_PATH', '../../FileConverter/bin/')
+      base.set_env('LD_LIBRARY_PATH', '../FileConverter/bin/')
 
-    run_module('../../../server/DocService/sources', ['server.js'])
-    run_module('../../../server/DocService/sources', ['gc.js'])
-    run_module('../../../server/FileConverter/sources', ['convertermaster.js'])
-    run_module('../../../server/SpellChecker/sources', ['server.js'])
+    run_module('../../../server/DocService', ['sources/server.js'])
+#    run_module('../../../server/DocService', ['sources/gc.js'])
+    run_module('../../../server/FileConverter', ['sources/convertermaster.js'])
+#    run_module('../../../server/SpellChecker', ['sources/server.js'])
   except SystemExit:
     input("Ignoring SystemExit. Press Enter to continue...")
     exit(0)

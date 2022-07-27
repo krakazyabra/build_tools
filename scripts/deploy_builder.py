@@ -34,6 +34,7 @@ def make():
     # x2t
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "kernel")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "UnicodeConverter")
+    base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "kernel_network")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "graphics")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "PdfWriter")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "PdfReader")
@@ -43,6 +44,7 @@ def make():
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "HtmlRenderer")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "Fb2File")
     base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "EpubFile")
+    base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "DocxRenderer")
 
     if ("ios" == platform):
       base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "x2t")
@@ -66,14 +68,11 @@ def make():
     if isWindowsXP:
       base.copy_lib(core_build_dir + "/lib/" + platform_postfix + "/xp", root_dir, "doctrenderer")
       base.copy_file(core_build_dir + "/lib/" + platform_postfix + "/xp/doctrenderer.lib", root_dir + "/doctrenderer.lib")
-      base.copy_files(core_dir + "/Common/3dParty/v8/v8_xp/" + platform + "/release/icudt*.dll", root_dir + "/")
     else:
       base.copy_lib(core_build_dir + "/lib/" + platform_postfix, root_dir, "doctrenderer")
       if (0 == platform.find("win")):
         base.copy_file(core_build_dir + "/lib/" + platform_postfix + "/doctrenderer.lib", root_dir + "/doctrenderer.lib")
-        base.copy_files(core_dir + "/Common/3dParty/v8/v8/out.gn/" + platform + "/release/icudt*.dat", root_dir + "/")
-      else:
-        base.copy_file(core_dir + "/Common/3dParty/v8/v8/out.gn/" + platform + "/icudtl.dat", root_dir + "/icudtl.dat")
+    base.copy_v8_files(core_dir, root_dir, platform, isWindowsXP)
 
     # app
     base.copy_exe(core_build_dir + "/bin/" + platform_postfix, root_dir, "docbuilder")
